@@ -104,7 +104,8 @@ int main()
   int socket_desc, new_socket, c;
   struct sockaddr_in server, client;
   char clientMsg[1024] = {0};
-  char serverReply[100024] = {0};
+  char serverReply[1024] = {0};
+  char *serverReplyP;
   char *reference;
   char cOpt;
   sequence_string sequences_to_analyze[1024];
@@ -112,6 +113,7 @@ int main()
   int sequenceSize;
   char *secuencia;
   int cantSeq = 0;
+  int reportSize;
 
   printf("Starting daemonize\n");
   daemonize();
@@ -181,12 +183,12 @@ int main()
             fclose(ptrR);
           }
 
-          break;
+        break;
 
         case 'S': //LOAD NEW SEQUENCES
           cantSeq = 0;
           clientMsg[iLen - 1] = '\0';
-
+          
           sequenceSize = countChar(clientMsg);
           secuencia = malloc(sequenceSize * sizeof(char));
 
@@ -219,10 +221,11 @@ int main()
             }
             fclose(ptrS);
           }
+          free(secuencia);
           // Begin multithread with Open MP
           omp_set_num_threads(cantSeq);
 
-#pragma omp for
+          #pragma omp for
           for (int i = 0; i < cantSeq; i++)
           {
             sequences_to_analyze[i].found_at_reference_address = strstr(reference, sequences_to_analyze[i].sequence);
@@ -251,8 +254,12 @@ int main()
             syslog(5, "sReportLine=%s", sReportLine);
           }
           syslog(5, "sReport:\n%s", sReport);
-          snprintf(serverReply, sizeof(serverReply), "Sequences loaded!\n");
-          send(new_socket, serverReply, sizeof(serverReply), 0);
+
+          reportSize = strlen(sReport);
+          serverReplyP = malloc(reportSize * sizeof(char));
+          
+          snprintf(serverReplyP, ++reportSize, "\n%s", sReport  );
+          send(new_socket, serverReplyP, ++reportSize, 0);
           free(sReport);
           break;
         }

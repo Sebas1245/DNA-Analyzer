@@ -13,7 +13,7 @@ int main(int argc, char const *argv[]) {
   struct sockaddr_in serv_addr;
   char *hello = "Hello from client";
   char clientReply[1024] = {0};
-  char serverMsg[1024] = {0};
+  char serverMsg[10024] = {0};
   char fileName[100];
   int iOpt;
 
@@ -39,6 +39,7 @@ int main(int argc, char const *argv[]) {
 
   printf("Welcome to DNAAnalyzer!\n");
   while (1) {
+    memset(serverMsg, 0, sizeof(serverMsg));
     printf("What would you like to do? \n 1) Upload a reference \n 2) Upload a sequence \n Type '1' or '2'\n");
     scanf("%d", &iOpt);
 
