@@ -1,7 +1,7 @@
 CFLAGS = -O
 CC = gcc
 
-SRC =  server.c
+SRC = server.c
 OBJ = $(SRC:.c = .o)
 
 miniDBMS: $(OBJ)

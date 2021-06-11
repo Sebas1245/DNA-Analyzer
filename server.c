@@ -9,22 +9,35 @@
 #include <sys/types.h>
 #include <syslog.h>
 #include <unistd.h> //write
+#include <omp.h>
 
 char cwd[FILENAME_MAX];
 
-int countChar(char* clientMsg){
+// structure to store the sequences
+typedef struct
+{
+  char *sequence;
+  char *found_at_reference_address;
+  int found_at;
+  int length;
+} sequence_string;
+
+// contar los
+int countChar(char *clientMsg)
+{
   int iCount = 0;
   char ch;
   FILE *ptr = fopen(clientMsg, "r");
-  if(ptr == NULL) return -1;
-  while((ch = fgetc(ptr))!=EOF){
-      iCount++;
+  if (ptr == NULL)
+    return -1;
+  while ((ch = fgetc(ptr)) != EOF)
+  {
+    iCount++;
   }
-  iCount+=10;
+  iCount += 10;
   fclose(ptr);
   return iCount;
 }
-
 
 static void daemonize()
 {
@@ -93,11 +106,12 @@ int main()
   char clientMsg[1024] = {0};
   char serverReply[1024] = {0};
   char *reference;
-  char cOpt; 
+  char cOpt;
+  sequence_string sequences_to_analyze[1024];
   int referenceSize;
-  char secuencia[100000];
+  int sequenceSize;
+  char *secuencia;
   int cantSeq = 0;
-  
 
   printf("Starting daemonize\n");
   daemonize();
@@ -138,55 +152,84 @@ int main()
       {
         //char clientMsg[1000] = "test_files/";
         int iLen = strlen(clientMsg);
-        cOpt = clientMsg[iLen-1];
+        cOpt = clientMsg[iLen - 1];
 
         switch (cOpt)
         {
-          case 'R': // LOAD NEW REFERENCE 
-            clientMsg[iLen-1]='\0';
-            //strcat(clientMsg, clientMsg);
-            referenceSize = countChar(clientMsg);
-            reference = malloc(referenceSize*sizeof(char));
+        case 'R': // LOAD NEW REFERENCE
+          clientMsg[iLen - 1] = '\0';
+          //strcat(clientMsg, clientMsg);
+          referenceSize = countChar(clientMsg);
+          reference = malloc(referenceSize * sizeof(char));
 
-            FILE *ptrR = fopen(clientMsg, "r");
+          FILE *ptrR = fopen(clientMsg, "r");
 
-            if(ptrR == NULL) syslog(LOG_ERR, "Could no open selected file\n");
-            else{
-              if(fgets(reference, referenceSize, ptrR)==NULL){
-                syslog(LOG_ERR, "Error trying to read from file");
-                snprintf(serverReply, sizeof(serverReply), "Reference could not be loaded");
-              }else{
-                snprintf(serverReply, sizeof(serverReply), "Reference loaded!");
-                send(new_socket, serverReply, sizeof(serverReply), 0);
-              }
+          if (ptrR == NULL)
+            syslog(LOG_ERR, "Could no open selected file\n");
+          else
+          {
+            if (fgets(reference, referenceSize, ptrR) == NULL)
+            {
+              syslog(LOG_ERR, "Error trying to read from file");
+              snprintf(serverReply, sizeof(serverReply), "Reference could not be loaded");
             }
+            else
+            {
+              snprintf(serverReply, sizeof(serverReply), "Reference loaded!\n");
+              send(new_socket, serverReply, sizeof(serverReply), 0);
+            }
+            fclose(ptrR);
+          }
 
           break;
 
-          case 'S': //LOAD NEW SEQUENCES 
-            cantSeq = 0;
-            clientMsg[iLen-1]='\0';
-            
-            referenceSize = countChar(clientMsg);
-            reference = malloc(referenceSize*sizeof(char));
+        case 'S': //LOAD NEW SEQUENCES
+          cantSeq = 0;
+          clientMsg[iLen - 1] = '\0';
 
-            FILE *ptrS = fopen(clientMsg, "r");
+          sequenceSize = countChar(clientMsg);
+          secuencia = malloc(sequenceSize * sizeof(char));
 
-            if(ptrS == NULL) syslog(LOG_ERR, "Could no open selected file\n");
-            else{
-              while( fgets (secuencia, 1024, ptrS) ){
-                /*
-                  AQUI HAY QUE GUARDAR CADA secuencia EN UN STRUCT
+          FILE *ptrS = fopen(clientMsg, "r");
+
+          if (ptrS == NULL)
+            syslog(LOG_ERR, "Could no open selected file\n");
+          else
+          {
+
+            syslog(5, "Size of sequences to analyze array %ld", sizeof(sequences_to_analyze));
+
+            while (fgets(secuencia, sequenceSize, ptrS))
+            {
+              /*
+                  AQUI HAY GUARDAMOS CADA secuencia EN UN STRUCT
                 */
-                cantSeq++;
+              int read_len = strlen(secuencia);
+              if (secuencia[read_len - 1] == '\n')
+              {
+                secuencia[read_len - 1] = 0;
+                secuencia[read_len - 2] = 0;
               }
+              int true_len = strlen(secuencia);
+              syslog(LOG_NOTICE, "strlen secuencia = %d", true_len);
+              syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
+              syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
+              sequences_to_analyze[cantSeq].sequence = malloc(true_len * sizeof(char));
+              strcpy(sequences_to_analyze[cantSeq].sequence, secuencia);
+              sequences_to_analyze[cantSeq].length = true_len;
+              cantSeq++;
             }
-              
-              snprintf(serverReply, sizeof(serverReply), "Sequences loaded!");
-              send(new_socket, serverReply, sizeof(serverReply), 0);
-          break;  
-        } 
-        
+            fclose(ptrS);
+            for (int i = 0; i < cantSeq; i++)
+            {
+              syslog(5, "Sequence=%s Sequence_Length=%d\n ", sequences_to_analyze[i].sequence, sequences_to_analyze[i].length);
+            }
+          }
+
+          snprintf(serverReply, sizeof(serverReply), "Sequences loaded!\n");
+          send(new_socket, serverReply, sizeof(serverReply), 0);
+          break;
+        }
       }
     }
     if (new_socket < 0)
