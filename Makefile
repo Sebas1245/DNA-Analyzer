@@ -1,4 +1,4 @@
-CFLAGS = -O
+CFLAGS = -O -fopenmp
 CC = gcc
 
 SRC = server.c
