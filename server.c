@@ -221,17 +221,15 @@ int main()
           }
           // Begin multithread with Open MP
           omp_set_num_threads(cantSeq);
-#pragma omp parallel
-          {
+
 #pragma omp for
-            for (int i = 0; i < cantSeq; i++)
-            {
-              sequences_to_analyze[i].found_at_reference_address = strstr(reference, sequences_to_analyze[i].sequence);
-              if (sequences_to_analyze[i].found_at_reference_address != NULL)
-                sequences_to_analyze[i].found_at = sequences_to_analyze[i].found_at_reference_address - reference;
-              else
-                sequences_to_analyze[i].found_at = -1; // SEQUENCE NOT FOUND
-            }
+          for (int i = 0; i < cantSeq; i++)
+          {
+            sequences_to_analyze[i].found_at_reference_address = strstr(reference, sequences_to_analyze[i].sequence);
+            if (sequences_to_analyze[i].found_at_reference_address != NULL)
+              sequences_to_analyze[i].found_at = sequences_to_analyze[i].found_at_reference_address - reference;
+            else
+              sequences_to_analyze[i].found_at = -1; // SEQUENCE NOT FOUND
           }
           // Sequential code begins again
           char *sReport = malloc(10000);
