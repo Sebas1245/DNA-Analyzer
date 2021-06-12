@@ -19,6 +19,7 @@ typedef struct {
   char *found_at_reference_address;
   int found_at;
   int length;
+  int id;
 } sequence_string;
 
 // contar los
@@ -33,6 +34,20 @@ int countChar(char *clientMsg) {
   iCount += 10;
   fclose(ptr);
   return iCount;
+}
+
+// porcentage de secuencias que cubre el genoma de referencia
+double getPercentage(const char *reference) {
+  int seqCoverage = 0;
+  int sizeGenome = strlen(reference);
+
+  if (sizeGenome == 0) return 0;
+
+  for (int i = 0; i < sizeGenome; i++) {
+    if (reference[i] == '-') seqCoverage++;
+  }
+
+  return ((double)seqCoverage / sizeGenome) * 100.0;
 }
 
 static void daemonize() {
@@ -192,49 +207,76 @@ int main() {
                     malloc(true_len * sizeof(char));
                 strcpy(sequences_to_analyze[cantSeq].sequence, secuencia);
                 sequences_to_analyze[cantSeq].length = true_len;
+                sequences_to_analyze[cantSeq].id = cantSeq;
                 cantSeq++;
               }
               fclose(ptrS);
             }
             free(secuencia);
 
-#pragma omp parallel for
+            int seq_found = 0;
+            int seq_not_found = 0;
+
+#pragma omp parallel for reduction(+ : seq_found)
             for (int i = 0; i < cantSeq; i++) {
               sequences_to_analyze[i].found_at_reference_address =
                   strstr(reference, sequences_to_analyze[i].sequence);
-              if (sequences_to_analyze[i].found_at_reference_address != NULL)
+              if (sequences_to_analyze[i].found_at_reference_address != NULL) {
                 sequences_to_analyze[i].found_at =
                     sequences_to_analyze[i].found_at_reference_address -
                     reference;
-              else
+                seq_found = seq_found + 1;
+              } else {
                 sequences_to_analyze[i].found_at = -1;  // SEQUENCE NOT FOUND
+              }
             }
+
+            // Parallel code begins again
+#pragma omp parallel for
+            for (int i = 0; i < cantSeq; i++) {
+              if (sequences_to_analyze[i].found_at_reference_address != NULL) {
+                memset(reference + sequences_to_analyze[i].found_at, '-',
+                       sequences_to_analyze[i].length * sizeof(char));
+              }
+            }
+
             // Sequential code begins again
-            char *sReport = malloc(10000);
+            double percentage = getPercentage(reference);
+            seq_not_found = cantSeq - seq_found;
+
+            char *sReport = malloc(100000);
             memset(sReport, '\0', sizeof(sReport));
             for (int i = 0; i < cantSeq; i++) {
-              char sReportLine[sequences_to_analyze[i].length +
-                               40];  // Buffer for each line that must be
+              char sReportLine[99];  // Buffer for each line that must be
                                      // printed in report
               if (sequences_to_analyze[i].found_at == -1) {
-                syslog(5, "%s no se encontro\n",
-                       sequences_to_analyze[i].sequence);
+                syslog(5, "Secuencia #%d no se encontro\n",
+                       sequences_to_analyze[i].id);
                 snprintf(sReportLine, sizeof(sReportLine),
-                         "%s no se encontro\n",
-                         sequences_to_analyze[i].sequence);
+                         "Secuencia #%d no se encontro\n",
+                         sequences_to_analyze[i].id);
               } else {
-                syslog(5, "%s a partir del caracter %d\n ",
-                       sequences_to_analyze[i].sequence,
+                syslog(5, "Secuencia #%d a partir del caracter %d\n",
+                       sequences_to_analyze[i].id,
                        sequences_to_analyze[i].found_at);
                 snprintf(sReportLine, sizeof(sReportLine),
-                         "%s a partir del caracter %d\n ",
-                         sequences_to_analyze[i].sequence,
+                         "Secuencia #%d a partir del caracter %d\n",
+                         sequences_to_analyze[i].id,
                          sequences_to_analyze[i].found_at);
               }
               strcat(sReport, sReportLine);
               syslog(5, "sReportLine=%s", sReportLine);
             }
             syslog(5, "sReport:\n%s", sReport);
+
+            // Reporte porcentaje
+            char sReportLine[990];
+            snprintf(sReportLine, sizeof(sReportLine),
+                     "Las secuencias cubren el %f%% del genoma de referencia\n"
+                     "%d secuencias mapeadas\n"
+                     "%d secuencias no mapeadas\n",
+                     percentage, seq_found, seq_not_found);
+            strcat(sReport, sReportLine);
 
             reportSize = strlen(sReport);
             serverReplyP = malloc(reportSize * sizeof(char));
