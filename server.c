@@ -105,6 +105,7 @@ int main()
   struct sockaddr_in server, client;
   char clientMsg[1024] = {0};
   char serverReply[1024] = {0};
+  char *serverReplyP;
   char *reference;
   char cOpt;
   sequence_string sequences_to_analyze[1024];
@@ -112,6 +113,7 @@ int main()
   int sequenceSize;
   char *secuencia;
   int cantSeq = 0;
+  int reportSize;
 
   printf("Starting daemonize\n");
   daemonize();
@@ -181,12 +183,12 @@ int main()
             fclose(ptrR);
           }
 
-          break;
+        break;
 
         case 'S': //LOAD NEW SEQUENCES
           cantSeq = 0;
           clientMsg[iLen - 1] = '\0';
-
+          
           sequenceSize = countChar(clientMsg);
           secuencia = malloc(sequenceSize * sizeof(char));
 
@@ -196,8 +198,6 @@ int main()
             syslog(LOG_ERR, "Could no open selected file\n");
           else
           {
-
-            syslog(5, "Size of sequences to analyze array %ld", sizeof(sequences_to_analyze));
 
             while (fgets(secuencia, sequenceSize, ptrS))
             {
@@ -211,26 +211,60 @@ int main()
                 secuencia[read_len - 2] = 0;
               }
               int true_len = strlen(secuencia);
-              syslog(LOG_NOTICE, "strlen secuencia = %d", true_len);
-              syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
-              syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
+              // syslog(LOG_NOTICE, "strlen secuencia = %d", true_len);
+              // syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
+              // syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
               sequences_to_analyze[cantSeq].sequence = malloc(true_len * sizeof(char));
               strcpy(sequences_to_analyze[cantSeq].sequence, secuencia);
               sequences_to_analyze[cantSeq].length = true_len;
               cantSeq++;
             }
             fclose(ptrS);
-            for (int i = 0; i < cantSeq; i++)
-            {
-              syslog(5, "Sequence=%s Sequence_Length=%d\n ", sequences_to_analyze[i].sequence, sequences_to_analyze[i].length);
-            }
           }
+          free(secuencia);
+          // Begin multithread with Open MP
+          omp_set_num_threads(cantSeq);
 
-          snprintf(serverReply, sizeof(serverReply), "Sequences loaded!\n");
-          send(new_socket, serverReply, sizeof(serverReply), 0);
+          #pragma omp for
+          for (int i = 0; i < cantSeq; i++)
+          {
+            sequences_to_analyze[i].found_at_reference_address = strstr(reference, sequences_to_analyze[i].sequence);
+            if (sequences_to_analyze[i].found_at_reference_address != NULL)
+              sequences_to_analyze[i].found_at = sequences_to_analyze[i].found_at_reference_address - reference;
+            else
+              sequences_to_analyze[i].found_at = -1; // SEQUENCE NOT FOUND
+          }
+          // Sequential code begins again
+          char *sReport = malloc(10000);
+          memset(sReport, '\0', sizeof(sReport));
+          for (int i = 0; i < cantSeq; i++)
+          {
+            char sReportLine[sequences_to_analyze[i].length + 40]; // Buffer for each line that must be printed in report
+            if (sequences_to_analyze[i].found_at == -1)
+            {
+              syslog(5, "%s no se encontro\n", sequences_to_analyze[i].sequence);
+              snprintf(sReportLine, sizeof(sReportLine), "%s no se encontro\n", sequences_to_analyze[i].sequence);
+            }
+            else
+            {
+              syslog(5, "%s a partir del caracter %d\n ", sequences_to_analyze[i].sequence, sequences_to_analyze[i].found_at);
+              snprintf(sReportLine, sizeof(sReportLine), "%s a partir del caracter %d\n ", sequences_to_analyze[i].sequence, sequences_to_analyze[i].found_at);
+            }
+            strcat(sReport, sReportLine);
+            syslog(5, "sReportLine=%s", sReportLine);
+          }
+          syslog(5, "sReport:\n%s", sReport);
+
+          reportSize = strlen(sReport);
+          serverReplyP = malloc(reportSize * sizeof(char));
+          
+          snprintf(serverReplyP, ++reportSize, "\n%s", sReport  );
+          send(new_socket, serverReplyP, ++reportSize, 0);
+          free(sReport);
           break;
         }
       }
+      free(reference);
     }
     if (new_socket < 0)
     {
