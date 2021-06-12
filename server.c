@@ -197,8 +197,6 @@ int main() {
               fclose(ptrS);
             }
             free(secuencia);
-            // Begin multithread with Open MP
-            omp_set_num_threads(cantSeq);
 
 #pragma omp parallel for
             for (int i = 0; i < cantSeq; i++) {
