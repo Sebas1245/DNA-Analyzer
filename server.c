@@ -191,9 +191,7 @@ int main() {
               syslog(LOG_ERR, "Could no open selected file\n");
             else {
               while (fgets(secuencia, sequenceSize, ptrS)) {
-                /*
-                    AQUI HAY GUARDAMOS CADA secuencia EN UN STRUCT
-                  */
+                // AQUI HAY GUARDAMOS CADA secuencia EN UN STRUCT
                 int read_len = strlen(secuencia);
                 if (secuencia[read_len - 1] == '\n') {
                   secuencia[read_len - 1] = 0;
@@ -204,8 +202,7 @@ int main() {
                 // syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
                 // syslog(LOG_NOTICE, "Secuencia[%d] = %s", cantSeq, secuencia);
                 sequences_to_analyze[cantSeq].sequence =
-                    malloc(true_len * sizeof(char));
-                strcpy(sequences_to_analyze[cantSeq].sequence, secuencia);
+                    strndup(secuencia, true_len);
                 sequences_to_analyze[cantSeq].length = true_len;
                 sequences_to_analyze[cantSeq].id = cantSeq;
                 cantSeq++;
@@ -217,7 +214,7 @@ int main() {
             int seq_found = 0;
             int seq_not_found = 0;
 
-#pragma omp parallel for reduction(+ : seq_found)
+#pragma omp parallel for shared(reference) reduction(+ : seq_found)
             for (int i = 0; i < cantSeq; i++) {
               sequences_to_analyze[i].found_at_reference_address =
                   strstr(reference, sequences_to_analyze[i].sequence);
@@ -227,12 +224,12 @@ int main() {
                     reference;
                 seq_found = seq_found + 1;
               } else {
-                sequences_to_analyze[i].found_at = -1;  // SEQUENCE NOT FOUND
+                sequences_to_analyze[i].found_at = -1;  //   SEQUENCE NOT FOUND
               }
             }
 
-            // Parallel code begins again
-#pragma omp parallel for
+// Parallel code begins again
+#pragma omp parallel for shared(reference)
             for (int i = 0; i < cantSeq; i++) {
               if (sequences_to_analyze[i].found_at_reference_address != NULL) {
                 memset(reference + sequences_to_analyze[i].found_at, '-',
@@ -241,11 +238,10 @@ int main() {
             }
 
             // Sequential code begins again
-            double percentage = getPercentage(reference);
             seq_not_found = cantSeq - seq_found;
+            double percentage = getPercentage(reference);
 
-            char *sReport = malloc(100000);
-            memset(sReport, '\0', sizeof(sReport));
+            char sReport[100000];
             for (int i = 0; i < cantSeq; i++) {
               char sReportLine[99];  // Buffer for each line that must be
                                      // printed in report
@@ -281,9 +277,12 @@ int main() {
             reportSize = strlen(sReport);
             serverReplyP = malloc(reportSize * sizeof(char));
 
-            snprintf(serverReplyP, ++reportSize, "\n%s", sReport);
-            send(new_socket, serverReplyP, ++reportSize, 0);
-            free(sReport);
+            snprintf(serverReplyP, reportSize, "\n%s", sReport);
+            send(new_socket, serverReplyP, reportSize, 0);
+            free(serverReplyP);
+            for (int i = 0; i < cantSeq; i++) {
+              free(sequences_to_analyze[cantSeq].sequence);
+            }
             break;
           default:
             snprintf(serverReply, sizeof(serverReply),
