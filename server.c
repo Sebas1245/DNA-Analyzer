@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <syslog.h>
+#include <time.h>
 #include <unistd.h>  //write
 
 char cwd[FILENAME_MAX];
@@ -213,6 +214,7 @@ int main() {
 
             int seq_found = 0;
             int seq_not_found = 0;
+            clock_t start = clock();
 
 #pragma omp parallel for shared(reference) reduction(+ : seq_found)
             for (int i = 0; i < cantSeq; i++) {
@@ -240,6 +242,7 @@ int main() {
             // Sequential code begins again
             seq_not_found = cantSeq - seq_found;
             double percentage = getPercentage(reference);
+            clock_t end = clock();
 
             char sReport[100000];
             for (int i = 0; i < cantSeq; i++) {
@@ -270,8 +273,9 @@ int main() {
             snprintf(sReportLine, sizeof(sReportLine),
                      "Las secuencias cubren el %f%% del genoma de referencia\n"
                      "%d secuencias mapeadas\n"
-                     "%d secuencias no mapeadas\n",
-                     percentage, seq_found, seq_not_found);
+                     "%d secuencias no mapeadas\nTiempo en paralelo: %f\n",
+                     percentage, seq_found, seq_not_found,
+                     (double)(end - start) / CLOCKS_PER_SEC);
             strcat(sReport, sReportLine);
 
             reportSize = strlen(sReport);
